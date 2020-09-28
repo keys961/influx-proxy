@@ -5,75 +5,47 @@
 package backend
 
 import (
-	"errors"
+	"encoding/json"
 	"log"
-	"reflect"
-	"strconv"
-	"strings"
 
 	"gopkg.in/redis.v5"
 )
 
 const (
-	VERSION = "1.1"
+	VERSION = "0.9"
 )
 
-var (
-	ErrIllegalConfig = errors.New("illegal config")
-)
-
-func LoadStructFromMap(data map[string]string, o interface{}) (err error) {
-	var x int
-	val := reflect.ValueOf(o).Elem()
-	for i := 0; i < val.NumField(); i++ {
-		valueField := val.Field(i)
-		typeField := val.Type().Field(i)
-
-		name := strings.ToLower(typeField.Name)
-		s, ok := data[name]
-		if !ok {
-			continue
-		}
-
-		switch typeField.Type.Kind() {
-		case reflect.String:
-			valueField.SetString(s)
-		case reflect.Int:
-			x, err = strconv.Atoi(s)
-			if err != nil {
-				log.Printf("%s: %s", err, name)
-				return
-			}
-			valueField.SetInt(int64(x))
-		}
-	}
+func decode(data string, o interface{}) (err error) {
+	err = json.Unmarshal([]byte(data), &o)
 	return
 }
 
-type NodeConfig struct {
-	ListenAddr   string
-	DB           string
-	Zone         string
-	Nexts        string
-	Interval     int
-	IdleTimeout  int
-	WriteTracing int
-	QueryTracing int
+// Proxy node configuration
+type ProxyConfig struct {
+	ListenAddr   string `json:"listenAddr"`
+	DB           string `json:"db"`
+	Zone         string `json:"zone"`
+	Interval     int    `json:"interval"`
+	IdleTimeout  int    `json:"idleTimeout"`
+	WriteTracing int    `json:"writeTracing"`
+	QueryTracing int    `json:"queryTracing"`
 }
 
+// Influx-db node configuration
 type BackendConfig struct {
-	URL             string
-	DB              string
-	Zone            string
-	Interval        int
-	Timeout         int
-	TimeoutQuery    int
-	MaxRowLimit     int
-	CheckInterval   int
-	RewriteInterval int
-	WriteOnly       int
+	URL             string `json:"url"`
+	DB              string `json:"db"`
+	Zone            string `json:"zone"`
+	Interval        int    `json:"interval"`
+	Timeout         int    `json:"timeout"`
+	TimeoutQuery    int    `json:"timeoutQuery"`
+	MaxRowLimit     int    `json:"maxRowLimit"`
+	CheckInterval   int    `json:"checkInterval"`
+	RewriteInterval int    `json:"rewriteInterval"`
+	WriteOnly       int    `json:"writeOnly"`
 }
 
+// Redis stub for querying configuration
 type RedisConfigSource struct {
 	client *redis.Client
 	node   string
@@ -88,66 +60,90 @@ func NewRedisConfigSource(options *redis.Options, node string) (rcs *RedisConfig
 	return
 }
 
-func (rcs *RedisConfigSource) LoadNode() (nodecfg NodeConfig, err error) {
-	val, err := rcs.client.HGetAll("default_node").Result()
+func (rcs *RedisConfigSource) GetProxiesConfig() (proxiesConfig map[string]*ProxyConfig, err error) {
+	proxiesConfig = make(map[string]*ProxyConfig)
+	val, err := rcs.client.HGetAll("n:").Result()
 	if err != nil {
-		log.Printf("redis load error: b:%s", rcs.node)
+		log.Printf("Get proxies config error.")
 		return
 	}
 
-	err = LoadStructFromMap(val, &nodecfg)
-	if err != nil {
-		log.Printf("redis load error: b:%s", rcs.node)
-		return
+	for proxyName, proxyConfigJson := range val {
+		var proxyConfig = ProxyConfig{}
+		err = decode(proxyConfigJson, &proxyConfig)
+		if err != nil {
+			log.Printf("Get proxies config error.")
+		}
+		proxiesConfig[proxyName] = &proxyConfig
 	}
-
-	val, err = rcs.client.HGetAll("n:" + rcs.node).Result()
-	if err != nil {
-		log.Printf("redis load error: b:%s", rcs.node)
-		return
-	}
-
-	err = LoadStructFromMap(val, &nodecfg)
-	if err != nil {
-		log.Printf("redis load error: b:%s", rcs.node)
-		return
-	}
-	log.Printf("node config loaded.")
 	return
 }
 
-func (rcs *RedisConfigSource) LoadBackends() (backends map[string]*BackendConfig, err error) {
-	backends = make(map[string]*BackendConfig)
+func (rcs *RedisConfigSource) GetProxyConfig() (proxyConfig ProxyConfig, err error) {
+	val, err := rcs.client.HGetAll("n:").Result()
+	if err != nil {
+		log.Printf("Redis load error: b:%s", rcs.node)
+		return
+	}
+	proxyConfigJson := val[rcs.node]
+	if proxyConfigJson == "" {
+		log.Printf("Get proxy config error: n:%s", rcs.node)
+		return
+	}
+	err = decode(proxyConfigJson, &proxyConfig)
+	if err != nil {
+		log.Printf("Get proxy config error: n:%s", rcs.node)
+		return
+	}
+	log.Printf("Proxy config loaded.")
+	return
+}
 
-	names, err := rcs.client.Keys("b:*").Result()
+func (rcs *RedisConfigSource) GetBackendsConfig() (backends map[string]*BackendConfig, err error) {
+	backends = make(map[string]*BackendConfig)
+	backendConfigs, err := rcs.client.HGetAll("b:").Result()
+	if err != nil {
+		log.Printf("Get backend config error: %s", err)
+		return
+	}
+
+	var cfg *BackendConfig
+	for name, backendConfig := range backendConfigs {
+		cfg, err = rcs.loadConfigFromRedis(backendConfig)
+		if err != nil {
+			log.Printf("Get backend config error: %s", err)
+			return
+		}
+		backends[name] = cfg
+	}
+	log.Printf("%d backends config loaded from redis.", len(backends))
+	return
+}
+
+func (rcs *RedisConfigSource) GetMeasurementsConfig() (measurementMap map[string][]string, err error) {
+	measurementMap = make(map[string][]string, 0)
+
+	measurements, err := rcs.client.HGetAll("m:").Result()
 	if err != nil {
 		log.Printf("read redis error: %s", err)
 		return
 	}
 
-	var cfg *BackendConfig
-	for _, name := range names {
-		name = name[2:len(name)]
-		cfg, err = rcs.LoadConfigFromRedis(name)
+	for measurementName, backendListJson := range measurements {
+		var backendList []string
+		err = decode(backendListJson, &backendList)
 		if err != nil {
-			log.Printf("read redis config error: %s", err)
 			return
 		}
-		backends[name] = cfg
+		measurementMap[measurementName] = backendList
 	}
-	log.Printf("%d backends loaded from redis.", len(backends))
+	log.Printf("%d measurements loaded from redis.", len(measurementMap))
 	return
 }
 
-func (rcs *RedisConfigSource) LoadConfigFromRedis(name string) (cfg *BackendConfig, err error) {
-	val, err := rcs.client.HGetAll("b:" + name).Result()
-	if err != nil {
-		log.Printf("redis load error: b:%s", name)
-		return
-	}
-
+func (rcs *RedisConfigSource) loadConfigFromRedis(configJson string) (cfg *BackendConfig, err error) {
 	cfg = &BackendConfig{}
-	err = LoadStructFromMap(val, cfg)
+	err = decode(configJson, &cfg)
 	if err != nil {
 		return
 	}
@@ -170,29 +166,5 @@ func (rcs *RedisConfigSource) LoadConfigFromRedis(name string) (cfg *BackendConf
 	if cfg.RewriteInterval == 0 {
 		cfg.RewriteInterval = 10000
 	}
-	return
-}
-
-func (rcs *RedisConfigSource) LoadMeasurements() (m_map map[string][]string, err error) {
-	m_map = make(map[string][]string, 0)
-
-	names, err := rcs.client.Keys("m:*").Result()
-	if err != nil {
-		log.Printf("read redis error: %s", err)
-		return
-	}
-
-	var length int64
-	for _, key := range names {
-		length, err = rcs.client.LLen(key).Result()
-		if err != nil {
-			return
-		}
-		m_map[key[2:len(key)]], err = rcs.client.LRange(key, 0, length).Result()
-		if err != nil {
-			return
-		}
-	}
-	log.Printf("%d measurements loaded from redis.", len(m_map))
 	return
 }

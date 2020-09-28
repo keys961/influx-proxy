@@ -13,69 +13,69 @@ import (
 )
 
 const (
-	WRITE_QUEUE = 16
+	WriteQueue = 16
 )
 
-type Backends struct {
+type Backend struct {
 	*HttpBackend
-	fb              *FileBackend
 	Interval        int
 	RewriteInterval int
 	MaxRowLimit     int32
 
-	running          bool
-	ticker           *time.Ticker
-	ch_write         chan []byte
-	buffer           *bytes.Buffer
-	ch_timer         <-chan time.Time
-	write_counter    int32
-	rewriter_running bool
-	wg               sync.WaitGroup
+	fileBackend     *FileBackend
+	running         bool
+	ticker          *time.Ticker
+	chWrite         chan []byte
+	buffer          *bytes.Buffer
+	chTimer         <-chan time.Time
+	writeCounter    int32
+	rewriterRunning bool
+	waitGroup       sync.WaitGroup
 }
 
 // maybe ch_timer is not the best way.
-func NewBackends(cfg *BackendConfig, name string) (bs *Backends, err error) {
-	bs = &Backends{
+func NewBackend(cfg *BackendConfig, name string) (bs *Backend, err error) {
+	bs = &Backend{
 		HttpBackend: NewHttpBackend(cfg),
 		// FIXME: path...
 		Interval:        cfg.Interval,
 		RewriteInterval: cfg.RewriteInterval,
 		running:         true,
 		ticker:          time.NewTicker(time.Millisecond * time.Duration(cfg.RewriteInterval)),
-		ch_write:        make(chan []byte, 16),
+		chWrite:         make(chan []byte, WriteQueue),
 
-		rewriter_running: false,
-		MaxRowLimit:      int32(cfg.MaxRowLimit),
+		rewriterRunning: false,
+		MaxRowLimit:     int32(cfg.MaxRowLimit),
 	}
-	bs.fb, err = NewFileBackend(name)
+	bs.fileBackend, err = NewFileBackend(name)
 	if err != nil {
-		return
+		_ = bs.Close()
+		return nil, err
 	}
-
 	go bs.worker()
-	return
+	return bs, nil
 }
 
-func (bs *Backends) worker() {
+func (bs *Backend) worker() {
 	for bs.running {
 		select {
-		case p, ok := <-bs.ch_write:
+		case p, ok := <-bs.chWrite:
 			if !ok {
 				// closed
 				bs.Flush()
-				bs.wg.Wait()
-				bs.HttpBackend.Close()
-				bs.fb.Close()
+				bs.waitGroup.Wait()
+				_ = bs.HttpBackend.Close()
+				bs.fileBackend.Close()
 				return
 			}
 			bs.WriteBuffer(p)
 
-		case <-bs.ch_timer:
+		case <-bs.chTimer:
 			bs.Flush()
 			if !bs.running {
-				bs.wg.Wait()
-				bs.HttpBackend.Close()
-				bs.fb.Close()
+				bs.waitGroup.Wait()
+				_ = bs.HttpBackend.Close()
+				bs.fileBackend.Close()
 				return
 			}
 
@@ -85,23 +85,23 @@ func (bs *Backends) worker() {
 	}
 }
 
-func (bs *Backends) Write(p []byte) (err error) {
+func (bs *Backend) Write(p []byte) (err error) {
 	if !bs.running {
 		return io.ErrClosedPipe
 	}
 
-	bs.ch_write <- p
+	bs.chWrite <- p
 	return
 }
 
-func (bs *Backends) Close() (err error) {
+func (bs *Backend) Close() (err error) {
 	bs.running = false
-	close(bs.ch_write)
+	close(bs.chWrite)
 	return
 }
 
-func (bs *Backends) WriteBuffer(p []byte) {
-	bs.write_counter++
+func (bs *Backend) WriteBuffer(p []byte) {
+	bs.writeCounter++
 
 	if bs.buffer == nil {
 		bs.buffer = &bytes.Buffer{}
@@ -127,34 +127,34 @@ func (bs *Backends) WriteBuffer(p []byte) {
 	}
 
 	switch {
-	case bs.write_counter >= bs.MaxRowLimit:
+	case bs.writeCounter >= bs.MaxRowLimit:
 		bs.Flush()
-	case bs.ch_timer == nil:
-		bs.ch_timer = time.After(
+	case bs.chTimer == nil:
+		bs.chTimer = time.After(
 			time.Millisecond * time.Duration(bs.Interval))
 	}
 
 	return
 }
 
-func (bs *Backends) Flush() {
+func (bs *Backend) Flush() {
 	if bs.buffer == nil {
 		return
 	}
 
 	p := bs.buffer.Bytes()
 	bs.buffer = nil
-	bs.ch_timer = nil
-	bs.write_counter = 0
+	bs.chTimer = nil
+	bs.writeCounter = 0
 
 	if len(p) == 0 {
 		return
 	}
 
 	// TODO: limitation
-	bs.wg.Add(1)
+	bs.waitGroup.Add(1)
 	go func() {
-		defer bs.wg.Done()
+		defer bs.waitGroup.Done()
 		var buf bytes.Buffer
 		err := Compress(&buf, p)
 		if err != nil {
@@ -182,7 +182,7 @@ func (bs *Backends) Flush() {
 			log.Printf("write http error: %s\n", err)
 		}
 
-		err = bs.fb.Write(p)
+		err = bs.fileBackend.Write(p)
 		if err != nil {
 			log.Printf("write file error: %s\n", err)
 		}
@@ -193,17 +193,17 @@ func (bs *Backends) Flush() {
 	return
 }
 
-func (bs *Backends) Idle() {
-	if !bs.rewriter_running && bs.fb.IsData() {
-		bs.rewriter_running = true
+func (bs *Backend) Idle() {
+	if !bs.rewriterRunning && bs.fileBackend.IsData() {
+		bs.rewriterRunning = true
 		go bs.RewriteLoop()
 	}
 
 	// TODO: report counter
 }
 
-func (bs *Backends) RewriteLoop() {
-	for bs.fb.IsData() {
+func (bs *Backend) RewriteLoop() {
+	for bs.fileBackend.IsData() {
 		if !bs.running {
 			return
 		}
@@ -217,11 +217,11 @@ func (bs *Backends) RewriteLoop() {
 			continue
 		}
 	}
-	bs.rewriter_running = false
+	bs.rewriterRunning = false
 }
 
-func (bs *Backends) Rewrite() (err error) {
-	p, err := bs.fb.Read()
+func (bs *Backend) Rewrite() (err error) {
+	p, err := bs.fileBackend.Read()
 	if err != nil {
 		return
 	}
@@ -242,14 +242,14 @@ func (bs *Backends) Rewrite() (err error) {
 	default:
 		log.Printf("unknown error %s, maybe overloaded.", err)
 
-		err = bs.fb.RollbackMeta()
+		err = bs.fileBackend.RollbackMeta()
 		if err != nil {
 			log.Printf("rollback meta error: %s\n", err)
 		}
 		return
 	}
 
-	err = bs.fb.UpdateMeta()
+	err = bs.fileBackend.UpdateMeta()
 	if err != nil {
 		log.Printf("update meta error: %s\n", err)
 		return

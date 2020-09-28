@@ -2,3 +2,4 @@ bin
 testbk*
 *.dat
 *.rec
+.idea

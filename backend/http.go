@@ -20,7 +20,6 @@ import (
 var (
 	ErrBadRequest = errors.New("Bad Request")
 	ErrNotFound   = errors.New("Not Found")
-	ErrInternal   = errors.New("Internal Error")
 	ErrUnknown    = errors.New("Unknown Error")
 )
 
@@ -77,7 +76,7 @@ func (hb *HttpBackend) CheckActive() {
 	var err error
 	for hb.running {
 		_, err = hb.Ping()
-		hb.Active = (err == nil)
+		hb.Active = err == nil
 		time.Sleep(time.Millisecond * time.Duration(hb.Interval))
 	}
 }
@@ -100,7 +99,6 @@ func (hb *HttpBackend) Ping() (version string, err error) {
 		return
 	}
 	defer resp.Body.Close()
-
 	version = resp.Header.Get("X-Influxdb-Version")
 
 	if resp.StatusCode == 204 {
@@ -162,7 +160,7 @@ func (hb *HttpBackend) Query(w http.ResponseWriter, req *http.Request) (err erro
 	}
 
 	w.WriteHeader(resp.StatusCode)
-	w.Write(p)
+	_, err = w.Write(p)
 	return
 }
 
@@ -190,7 +188,7 @@ func (hb *HttpBackend) WriteStream(stream io.Reader, compressed bool) (err error
 	q.Set("db", hb.DB)
 
 	req, err := http.NewRequest("POST", hb.URL+"/write?"+q.Encode(), stream)
-	if compressed {
+	if compressed && req != nil {
 		req.Header.Add("Content-Encoding", "gzip")
 	}
 

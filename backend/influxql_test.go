@@ -4,7 +4,10 @@
 
 package backend
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // SHOW USERS
 // SHOW SUBSCRIPTIONS
@@ -46,52 +49,46 @@ import "testing"
 // ALTER RETENTION POLICY "policy1" ON "somedb" DURATION 1h REPLICATION 4
 
 func TestInfluxQL(t *testing.T) {
-	checkPoint(t, "select * from cpu", "cpu")
-	checkPoint(t, "(select *) from cpu", "cpu")
-	checkPoint(t, "[select *] from cpu", "cpu")
-	checkPoint(t, "{select *} from cpu", "cpu")
-	checkPoint(t, "select * from \"cpu\"", "cpu")
-	checkPoint(t, "select * from \"c\\\"pu\"", "c\"pu")
-	checkPoint(t, "select * from 'cpu'", "cpu")
+	check(t, "SELECT * FROM cpu", "cpu")
+	check(t, "SELECT * FROM \"cpu\"", "cpu")
 
-	checkPoint(t, "SELECT mean(\"value\") FROM \"cpu\" WHERE \"region\" = 'uswest' GROUP BY time(10m) fill(0)", "cpu")
-	checkPoint(t, "SELECT mean(\"value\") INTO \"cpu\\\"_1h\".:MEASUREMENT FROM /cpu.*/", "/cpu.*/")
+	check(t, "SELECT mean(\"value\") FROM \"cpu\" WHERE \"region\" = 'uswest' GROUP BY time(10m) fill(0)", "cpu")
+	// check(t, "SELECT mean(\"value\") INTO \"cpu\\\"_1h\".:MEASUREMENT FROM /cpu.*/", "/cpu.*/")
 
-	checkPoint(t, "REVOKE ALL PRIVILEGES FROM \"jdoe\"", "jdoe")
-	checkPoint(t, "REVOKE READ ON \"mydb\" FROM \"jdoe\"", "jdoe")
+	// check(t, "REVOKE ALL PRIVILEGES FROM \"jdoe\"", "jdoe")
+	// check(t, "REVOKE READ ON \"mydb\" FROM \"jdoe\"", "jdoe")
 
-	checkPoint(t, "DELETE FROM \"cpu\"", "cpu")
-	checkPoint(t, "DELETE FROM \"cpu\" WHERE time < '2000-01-01T00:00:00Z'", "cpu")
+	// check(t, "DELETE FROM \"cpu\"", "cpu")
+	// check(t, "DELETE FROM \"cpu\" WHERE time < '2000-01-01T00:00:00Z'", "cpu")
 
-	// checkPoint(t, "DROP SERIES FROM \"telegraf\".\"autogen\".\"cpu\" WHERE cpu = 'cpu8'", "cpu")
-	// checkPoint(t, "SHOW FIELD KEYS", "cpu")
-	checkPoint(t, "SHOW FIELD KEYS FROM \"cpu\"", "cpu")
-	// checkPoint(t, "SHOW SERIES FROM \"telegraf\".\"autogen\".\"cpu\" WHERE cpu = 'cpu8'", "cpu")
+	// check(t, "DROP SERIES FROM \"telegraf\".\"autogen\".\"cpu\" WHERE cpu = 'cpu8'", "cpu")
 
-	// checkPoint(t, "SHOW TAG KEYS", "cpu")
-	checkPoint(t, "SHOW TAG KEYS FROM cpu", "cpu")
-	checkPoint(t, "SHOW TAG KEYS FROM \"cpu\" WHERE \"region\" = 'uswest'", "cpu")
-	// checkPoint(t, "SHOW TAG KEYS WHERE \"host\" = 'serverA'", "cpu")
+	check(t, "SHOW FIELD KEYS FROM cpu", "cpu")
+	check(t, "SHOW FIELD KEYS FROM \"cpu\"", "cpu")
+	check(t, "SHOW SERIES FROM \"telegraf\".\"autogen\".\"cpu\" WHERE cpu = 'cpu8'", "cpu")
 
-	// checkPoint(t, "SHOW TAG VALUES WITH KEY = \"region\"", "cpu")
-	checkPoint(t, "SHOW TAG VALUES FROM \"cpu\" WITH KEY = \"region\"", "cpu")
-	// checkPoint(t, "SHOW TAG VALUES WITH KEY !~ /.*c.*/", "cpu")
-	checkPoint(t, "SHOW TAG VALUES FROM \"cpu\" WITH KEY IN (\"region\", \"host\") WHERE \"service\" = 'redis'", "cpu")
+	check(t, "SHOW TAG KEYS FROM cpu", "cpu")
+	check(t, "SHOW TAG KEYS FROM \"cpu\" WHERE \"region\" = 'uswest'", "cpu")
+	check(t, "SHOW TAG KEYS FROM cpu WHERE \"host\" = 'serverA'", "cpu")
 
-	checkPoint(t, "SHOW FIELD KEYS FROM \"1h\".\"cpu\"", "cpu")
-	checkPoint(t, "SHOW FIELD KEYS FROM 1h.cpu", "cpu")
-	checkPoint(t, "SHOW FIELD KEYS FROM \"cpu.load\"", "cpu.load")
-	checkPoint(t, "SHOW FIELD KEYS FROM 1h.\"cpu.load\"", "cpu.load")
-	checkPoint(t, "SHOW FIELD KEYS FROM \"1h\".\"cpu.load\"", "cpu.load")
+	check(t, "SHOW TAG VALUES FROM cpu WITH KEY = \"region\"", "cpu")
+	check(t, "SHOW TAG VALUES FROM \"1h\".\"cpu\" WITH KEY = \"region\"", "cpu")
+	check(t, "SHOW TAG VALUES FROM cpu WITH KEY !~ /.*c.*/", "cpu")
+	check(t, "SHOW TAG VALUES FROM \"cpu\" WITH KEY IN (\"region\", \"host\") WHERE \"service\" = 'redis'", "cpu")
+
+	check(t, "SHOW FIELD KEYS FROM \"1h\".\"cpu\"", "cpu")
+	check(t, "SHOW FIELD KEYS FROM \"cpu.load\"", "cpu.load")
+	check(t, "SHOW FIELD KEYS FROM \"1h\".\"cpu.load\"", "cpu.load")
 }
 
-func checkPoint(t *testing.T, q string, m string) {
+func check(t *testing.T, q string, m string) {
+	fmt.Printf(q + "\n")
 	qm, err := GetMeasurementFromInfluxQL(q)
 	if err != nil {
 		t.Errorf("error: %s", err)
 		return
 	}
-	if qm != m {
+	if qm[0] != m {
 		t.Errorf("measurement wrong: %s != %s", qm, m)
 		return
 	}
@@ -105,7 +102,7 @@ func BenchmarkInfluxQL(b *testing.B) {
 			b.Errorf("error: %s", err)
 			return
 		}
-		if qm != "cpu" {
+		if qm[0] != "cpu" {
 			b.Errorf("measurement wrong: %s != %s", qm, "cpu")
 			return
 		}

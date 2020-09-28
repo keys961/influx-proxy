@@ -78,9 +78,9 @@ func BenchmarkScanKey(b *testing.B) {
 
 func CreateTestInfluxCluster() (ic *InfluxCluster, err error) {
 	redisConfig := &RedisConfigSource{}
-	nodeConfig := &NodeConfig{}
+	nodeConfig := &ProxyConfig{}
 	ic = NewInfluxCluster(redisConfig, nodeConfig)
-	backends := make(map[string]BackendAPI)
+	backends := make(map[string]BackendApi)
 	bkcfgs := make(map[string]*BackendConfig)
 	cfg, _ := CreateTestBackendConfig("test1")
 	bkcfgs["test1"] = cfg
@@ -90,18 +90,16 @@ func CreateTestInfluxCluster() (ic *InfluxCluster, err error) {
 	cfg.WriteOnly = 1
 	bkcfgs["write_only"] = cfg
 	for name, cfg := range bkcfgs {
-		backends[name], err = NewBackends(cfg, name)
+		backends[name], err = NewBackend(cfg, name)
 		if err != nil {
 			return
 		}
 	}
 	ic.backends = backends
-	ic.nexts = "test2"
-	ic.bas = append(ic.bas, backends["test2"])
-	m2bs := make(map[string][]BackendAPI)
-	m2bs["cpu"] = append(m2bs["cpu"], backends["write_only"], backends["test1"])
-	m2bs["write_only"] = append(m2bs["write_only"], backends["write_only"])
-	ic.m2bs = m2bs
+	measurementToBackends := make(map[string][]BackendApi)
+	measurementToBackends["cpu"] = append(measurementToBackends["cpu"], backends["write_only"], backends["test1"])
+	measurementToBackends["write_only"] = append(measurementToBackends["write_only"], backends["write_only"])
+	ic.measurementToBackends = measurementToBackends
 
 	return
 }
@@ -183,7 +181,7 @@ func TestInfluxdbClusterQuery(t *testing.T) {
 		{
 			name:  "cpu",
 			query: "SELECT * from cpu where time > now() - 1m",
-			want:  400,
+			want:  204,
 		},
 		{
 			name:  "test",
@@ -221,14 +219,14 @@ func TestInfluxdbClusterQuery(t *testing.T) {
 			want:  200,
 		},
 		{
-			name:  "cpu.load",
+			name:  "cpu.load2",
 			query: " select cpu_load from \"cpu.load\" WHERE time > now() - 1m and host =~ /()$/",
-			want:  400,
+			want:  204,
 		},
 		{
-			name:  "cpu.load",
+			name:  "cpu.load3",
 			query: " select cpu_load from \"cpu.load\" WHERE time > now() - 1m and host =~ /^()$/",
-			want:  400,
+			want:  204,
 		},
 		{
 			name:  "write.only",

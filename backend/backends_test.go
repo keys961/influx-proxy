@@ -12,7 +12,7 @@ import (
 func TestCache(t *testing.T) {
 	cfg, ts := CreateTestBackendConfig("test")
 	defer ts.Close()
-	bs, err := NewBackends(cfg, "test")
+	bs, err := NewBackend(cfg, "test")
 	if err != nil {
 		t.Errorf("error: %s", err)
 		return
@@ -38,14 +38,14 @@ func TestCache(t *testing.T) {
 func TestRewrite(t *testing.T) {
 	cfg, ts := CreateTestBackendConfig("test")
 	defer ts.Close()
-	bs, err := NewBackends(cfg, "test")
+	bs, err := NewBackend(cfg, "test")
 	if err != nil {
 		t.Errorf("error: %s", err)
 		return
 	}
 	defer bs.Close()
 	for i := 0; i < 100; i++ {
-		err := bs.fb.Write([]byte("cpu value=3,value2=4 1434055562000010000"))
+		err := bs.fileBackend.Write([]byte("cpu value=3,value2=4 1434055562000010000"))
 		if err != nil {
 			t.Errorf("error: %s", err)
 			return

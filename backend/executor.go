@@ -22,13 +22,13 @@ type InfluxQLExecutor struct {
 func (iqe *InfluxQLExecutor) Query(w http.ResponseWriter, req *http.Request) (err error) {
 	q := strings.TrimSpace(req.FormValue("q"))
 	// better way??
-	matched, err := regexp.MatchString(ExecutorCmds, q)
+	matched, err := regexp.MatchString(ExecutorCommands, q)
 	if err != nil || !matched {
 		return ErrNotClusterQuery
 	}
-
+	// TODO: Empty implementation ?
 	w.WriteHeader(200)
-	w.Write([]byte(""))
+	_, _ = w.Write([]byte(""))
 
 	return
 }

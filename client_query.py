@@ -11,7 +11,7 @@ from __future__ import absolute_import, division,\
 import sys
 import requests
 
-BASEURL = 'http://localhost:6666'
+BASEURL = 'http://localhost:8087'
 
 
 def query(q, print_result=False):
@@ -21,8 +21,8 @@ def query(q, print_result=False):
 
 def main():
     if len(sys.argv) == 1:
-        assert query('select * from cpu')[0] == 400
-        assert query('select value from cpu')[0] == 400
+        assert query('select * from cpu')[0] < 300
+        assert query('select value from cpu')[0] < 300
         assert query('select value from cpu where time < now()')[0] == 200
     else:
         print(query(sys.argv[1])[1])

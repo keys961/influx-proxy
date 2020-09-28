@@ -11,7 +11,7 @@ from __future__ import absolute_import, division,\
 import time
 import requests
 
-BASEURL = 'http://localhost:6666'
+BASEURL = 'http://localhost:8087'
 
 
 def once():

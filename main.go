@@ -6,21 +6,20 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"flag"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
-	lumberjack "gopkg.in/natefinch/lumberjack.v2"
-	redis "gopkg.in/redis.v5"
+	"gopkg.in/natefinch/lumberjack.v2"
+	"gopkg.in/redis.v5"
 
-	"github.com/shell909090/influx-proxy/backend"
+	"influx_proxy/backend"
+	"influx_proxy/service"
 )
 
 var (
-	ErrConfig   = errors.New("config parse error")
 	ConfigFile  string
 	NodeName    string
 	RedisAddr   string
@@ -32,22 +31,22 @@ var (
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
 
-	flag.StringVar(&LogFilePath, "log-file-path", "/var/log/influx-proxy.log", "output file")
-	flag.StringVar(&ConfigFile, "config", "", "config file")
-	flag.StringVar(&NodeName, "node", "l1", "node name")
-	flag.StringVar(&RedisAddr, "redis", "localhost:6379", "config file")
-	flag.StringVar(&RedisPwd, "redis-pwd", "", "config file")
-	flag.IntVar(&RedisDb, "redis-db", 0, "config file")
+	flag.StringVar(&LogFilePath, "log-file-path", "", "Log output file.")
+	flag.StringVar(&ConfigFile, "config", "", "Configuration file.")
+	flag.StringVar(&NodeName, "node", "p1", "Node name")
+	flag.StringVar(&RedisAddr, "redis", "localhost:6379", "Redis address")
+	flag.StringVar(&RedisPwd, "redis-pwd", "", "Redis password")
+	flag.IntVar(&RedisDb, "redis-db", 0, "Redis db id")
 	flag.Parse()
 }
 
-type Config struct {
+type ProxyConfig struct {
 	redis.Options
 	Node string
 }
 
-func LoadJson(configfile string, cfg interface{}) (err error) {
-	file, err := os.Open(configfile)
+func LoadJson(cfgFile string, cfg interface{}) (err error) {
+	file, err := os.Open(cfgFile)
 	if err != nil {
 		return
 	}
@@ -75,21 +74,19 @@ func main() {
 	initLog()
 
 	var err error
-	var cfg Config
+	var cfg ProxyConfig
 
 	if ConfigFile != "" {
 		err = LoadJson(ConfigFile, &cfg)
 		if err != nil {
-			log.Print("load config failed: ", err)
+			log.Print("Load config failed: ", err)
 			return
 		}
-		log.Printf("json loaded.")
+		log.Printf("Config file loaded.")
 	}
-
 	if NodeName != "" {
 		cfg.Node = NodeName
 	}
-
 	if RedisAddr != "" {
 		cfg.Addr = RedisAddr
 		cfg.Password = RedisPwd
@@ -97,26 +94,28 @@ func main() {
 	}
 
 	rcs := backend.NewRedisConfigSource(&cfg.Options, cfg.Node)
-
-	nodecfg, err := rcs.LoadNode()
+	// Fetch node cluster info from redis
+	proxyConfig, err := rcs.GetProxyConfig()
 	if err != nil {
-		log.Printf("config source load failed.")
+		log.Printf("Config source load failed.")
+		return
+	}
+	// Build InfluxCluster
+	ic := backend.NewInfluxCluster(rcs, &proxyConfig)
+	err = ic.LoadConfig()
+	if err != nil {
+		log.Printf("Load influx-db cluster configuration failed: %s", err)
 		return
 	}
 
-	ic := backend.NewInfluxCluster(rcs, &nodecfg)
-	ic.LoadConfig()
-
 	mux := http.NewServeMux()
-	NewHttpService(ic, nodecfg.DB).Register(mux)
-
-	log.Printf("http service start.")
+	service.NewHttpService(ic, proxyConfig.DB).Register(mux)
 	server := &http.Server{
-		Addr:        nodecfg.ListenAddr,
+		Addr:        proxyConfig.ListenAddr,
 		Handler:     mux,
-		IdleTimeout: time.Duration(nodecfg.IdleTimeout) * time.Second,
+		IdleTimeout: time.Duration(proxyConfig.IdleTimeout) * time.Second,
 	}
-	if nodecfg.IdleTimeout <= 0 {
+	if proxyConfig.IdleTimeout <= 0 {
 		server.IdleTimeout = 10 * time.Second
 	}
 	err = server.ListenAndServe()
@@ -124,4 +123,5 @@ func main() {
 		log.Print(err)
 		return
 	}
+	log.Printf("Proxy service started.")
 }

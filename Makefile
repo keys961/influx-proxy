@@ -11,13 +11,15 @@ all: build
 
 build:
 	mkdir -p bin
-	go build -o bin/influx-proxy github.com/shell909090/influx-proxy/service
+	go build -o bin/influx-proxy .
 
 test:
-	go test -v github.com/shell909090/influx-proxy/backend
+	go test -v ./backend
+	rm -rf ./backend/*.dat
+	rm -rf ./backend/*.rec
 
 bench:
-	go test -bench=. github.com/shell909090/influx-proxy/backend
+	go test -bench=. ./backend
 
 clean:
 	rm -rf bin

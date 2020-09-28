@@ -6,12 +6,12 @@ package backend
 
 import "net/http"
 
-type Querier interface {
+type Queryable interface {
 	Query(w http.ResponseWriter, req *http.Request) (err error)
 }
 
-type BackendAPI interface {
-	Querier
+type BackendApi interface {
+	Queryable
 	IsActive() (b bool)
 	IsWriteOnly() (b bool)
 	Ping() (version string, err error)
