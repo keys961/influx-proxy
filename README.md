@@ -2,7 +2,7 @@
 
 This project adds a basic high availability layer to InfluxDB.
 
-NOTE: influx-proxy must be built with Go 1.11+, don't implement udp.
+NOTE: influx-proxy must be built with Go 1.14+, don't implement udp.
 
 ## Why
 
@@ -23,24 +23,21 @@ Therefore, we made InfluxDB Proxy.
 
 ## Requirements
 
-* Golang >= 1.11
+* Golang >= 1.14
 * Redis-server
 * Python >= 2.7
 
 ## Usage
 
 ```sh
-$ # install redis-server
-$ yum install redis
-$ # start redis-server on 6379 port
-$ redis-server --port 6379 &
-$ # Install influxdb-proxy to ./bin
+$ # Compile and generate influx-proxy executable to ./bin
 $ cd $PATH_TO_PROXY
 $ make
-$ # Edit config.py and execute it
-$ python config.py
+$ # Edit config.json and execute it
+$ vim config.json
+$ # ...
 $ # Start influx-proxy!
-$ ./bin/influxdb-proxy -redis localhost:6379 [--redis-pwd xxx --redis-db 0]
+$ ./bin/influxdb-proxy [--config=./config.json]
 ```
 
 ## Configuration
@@ -111,8 +108,8 @@ Only support match the following commands.
 
 ## Improvements from the Original Proxy
 
-1. Remove `KEYS` usage when configuring the cluster.
-2. Remove prefix-match on measurements to avoid confusion.
+1. Remove Redis.
+2. Remove prefix-match on measurement mapping to avoid confusion.
 3. Support non-measurement-crossing queries using `SELECT` clause.
 4. Integrated with `go mod`.
 5. Add an HTTP API `/meta` to get the metadata of the cluster, 

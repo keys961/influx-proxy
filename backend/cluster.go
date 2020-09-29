@@ -47,18 +47,18 @@ func ScanKey(pointBuf []byte) (key string, err error) {
 }
 
 type InfluxCluster struct {
+	config                *Config
 	lock                  sync.RWMutex
-	Zone                  string
+	zone                  string
 	queryExecutor         Queryable
 	ForbiddenQuery        []*regexp.Regexp
 	ObligatedQuery        []*regexp.Regexp
-	redisConfigSrc        *RedisConfigSource
 	backends              map[string]BackendApi   // backendName to backend
 	measurementToBackends map[string][]BackendApi // measurements to backends
 	stats                 *Statistics
 	counter               *Statistics
 	ticker                *time.Ticker
-	defaultTags           map[string]string
+	tags                  map[string]string
 	WriteTracing          int
 	QueryTracing          int
 }
@@ -77,31 +77,31 @@ type Statistics struct {
 }
 
 type ClusterMetadata struct {
-	Proxies               map[string]*ProxyConfig   `json:"proxies"`
+	Proxy                 *ProxyConfig              `json:"proxy"`
 	Backends              map[string]*BackendConfig `json:"backends"`
 	BackendStatus         map[string]bool           `json:"backendStatus"`
 	MeasurementToBackends map[string][]string       `json:"measurementToBackends"`
 }
 
-func NewInfluxCluster(redisConfigSrc *RedisConfigSource, nodeConfig *ProxyConfig) (ic *InfluxCluster) {
+func NewInfluxCluster(config *Config) (ic *InfluxCluster) {
 	ic = &InfluxCluster{
-		Zone:           nodeConfig.Zone,
-		queryExecutor:  &InfluxQLExecutor{},
-		redisConfigSrc: redisConfigSrc,
-		stats:          &Statistics{},
-		counter:        &Statistics{},
-		ticker:         time.NewTicker(10 * time.Second),
-		defaultTags:    map[string]string{"addr": nodeConfig.ListenAddr},
-		WriteTracing:   nodeConfig.WriteTracing,
-		QueryTracing:   nodeConfig.QueryTracing,
+		config:        config,
+		zone:          config.Proxy.Zone,
+		queryExecutor: &InfluxQLExecutor{},
+		stats:         &Statistics{},
+		counter:       &Statistics{},
+		ticker:        time.NewTicker(10 * time.Second),
+		tags:          map[string]string{"addr": config.Proxy.ListenAddr},
+		WriteTracing:  config.Proxy.WriteTracing,
+		QueryTracing:  config.Proxy.QueryTracing,
 	}
 	host, err := os.Hostname()
 	if err != nil {
 		log.Println(err)
 	}
-	ic.defaultTags["host"] = host
-	if nodeConfig.Interval > 0 {
-		ic.ticker = time.NewTicker(time.Second * time.Duration(nodeConfig.Interval))
+	ic.tags["host"] = host
+	if config.Proxy.Interval > 0 {
+		ic.ticker = time.NewTicker(time.Second * time.Duration(config.Proxy.Interval))
 	}
 
 	err = ic.ForbidQuery(ForbidCommands)
@@ -150,7 +150,7 @@ func (ic *InfluxCluster) Flush() {
 func (ic *InfluxCluster) WriteStatistics() (err error) {
 	metric := &monitor.Metric{
 		Name: "influxdb.cluster",
-		Tags: ic.defaultTags,
+		Tags: ic.tags,
 		Fields: map[string]interface{}{
 			"statQueryRequest":         ic.counter.QueryRequests,
 			"statQueryRequestFail":     ic.counter.QueryRequestsFail,
@@ -198,54 +198,41 @@ func (ic *InfluxCluster) EnsureQuery(s string) (err error) {
 
 func (ic *InfluxCluster) GetClusterMetadata() (metadata *ClusterMetadata, err error) {
 	metadata = &ClusterMetadata{}
-	metadata.Backends, err = ic.redisConfigSrc.GetBackendsConfig()
-	if err != nil {
-		log.Printf("Error fetching backend configuration\n")
-		return
+	metadata.Backends = make(map[string]*BackendConfig)
+	for name, config := range ic.config.Backends {
+		metadata.Backends[name] = &config
 	}
 	metadata.BackendStatus = make(map[string]bool)
 	for backendName, _ := range metadata.Backends {
 		metadata.BackendStatus[backendName] = ic.backends[backendName].IsActive()
 	}
-	metadata.MeasurementToBackends, err = ic.redisConfigSrc.GetMeasurementsConfig()
-	if err != nil {
-		log.Printf("Error fetching measurement configuration\n")
-		return
-	}
-	metadata.Proxies, err = ic.redisConfigSrc.GetProxiesConfig()
-	if err != nil {
-		log.Printf("Error fetching proxy configuration\n")
-		return
-	}
+	metadata.MeasurementToBackends = ic.config.Keymaps
+	metadata.Proxy = &ic.config.Proxy
 	return
 }
 
 func (ic *InfluxCluster) loadBackends() (backends map[string]BackendApi, err error) {
 	backends = make(map[string]BackendApi)
 
-	backendConfigs, err := ic.redisConfigSrc.GetBackendsConfig()
-	if err != nil {
-		return
-	}
-
+	backendConfigs := ic.config.Backends
+	var cnt = 0
 	for name, cfg := range backendConfigs {
-		backends[name], err = NewBackend(cfg, name)
+		backends[name], err = NewBackend(&cfg, name)
 		if err != nil {
 			log.Printf("Create backend error: %s", err)
 			return
 		}
+		cnt += 1
 	}
+	log.Printf("%d backends loaded.", cnt)
 	return
 }
 
 func (ic *InfluxCluster) loadMeasurements(backends map[string]BackendApi) (measurementToBackends map[string][]BackendApi, err error) {
 	measurementToBackends = make(map[string][]BackendApi)
 
-	measurementMap, err := ic.redisConfigSrc.GetMeasurementsConfig()
-	if err != nil {
-		return
-	}
-
+	measurementMap := ic.config.Keymaps
+	var cnt = 0
 	for measurementName, backendNames := range measurementMap {
 		var backendList []BackendApi
 		for _, backendName := range backendNames {
@@ -257,12 +244,14 @@ func (ic *InfluxCluster) loadMeasurements(backends map[string]BackendApi) (measu
 			}
 			backendList = append(backendList, backend)
 		}
+		cnt += 1
 		measurementToBackends[measurementName] = backendList
 	}
+	log.Printf("%d measurements loaded.", cnt)
 	return
 }
 
-func (ic *InfluxCluster) LoadConfig() (err error) {
+func (ic *InfluxCluster) Init() (err error) {
 	backends, err := ic.loadBackends()
 	if err != nil {
 		return
@@ -407,7 +396,7 @@ func (ic *InfluxCluster) Query(w http.ResponseWriter, req *http.Request) (err er
 	// TODO: better way?
 
 	for _, api := range apis {
-		if api.GetZone() != ic.Zone {
+		if api.GetZone() != ic.zone {
 			continue
 		}
 		if !api.IsActive() || api.IsWriteOnly() {
@@ -420,7 +409,7 @@ func (ic *InfluxCluster) Query(w http.ResponseWriter, req *http.Request) (err er
 	}
 
 	for _, api := range apis {
-		if api.GetZone() == ic.Zone {
+		if api.GetZone() == ic.zone {
 			continue
 		}
 		if !api.IsActive() {

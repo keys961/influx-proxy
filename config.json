@@ -1,0 +1,43 @@
+{
+  "proxy": {
+    "listenAddr": "localhost:8087",
+    "db": "citibike",
+    "zone": "local",
+    "interval": 10,
+    "idleTimeout": 10,
+    "writeTracing": 0,
+    "queryTracing": 0
+  },
+  "backends": {
+    "node1": {
+      "url": "http://10.100.2.180:8086",
+      "db": "citibike",
+      "zone":"local",
+      "interval": 1000,
+      "timeout": 10000,
+      "timeoutQuery": 600000,
+      "maxRowLimit": 10000,
+      "checkInterval": 1000,
+      "rewriteInterval": 10000
+    },
+    "node2": {
+      "url": "http://10.100.2.190:8086",
+      "db": "citibike",
+      "zone":"local",
+      "interval": 1000,
+      "timeout": 10000,
+      "timeoutQuery":600000,
+      "maxRowLimit":10000,
+      "checkInterval":1000,
+      "rewriteInterval":10000
+    }
+  },
+  "keymaps": {
+    "station_data1": ["node1"],
+    "station_data2": ["node2"],
+    "station_data": ["node1", "node2"],
+    "cpu": ["node1"],
+    "temperature": ["node2"],
+    "_default_": ["node1", "node2"]
+  }
+}

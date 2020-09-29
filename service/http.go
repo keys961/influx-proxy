@@ -68,7 +68,7 @@ func (hs *HttpService) HandleReload(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	w.Header().Add("X-Influxdb-Version", backend.VERSION)
 
-	err := hs.ic.LoadConfig()
+	err := hs.ic.Init()
 	if err != nil {
 		w.WriteHeader(500)
 		_, _ = w.Write([]byte(err.Error()))

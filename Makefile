@@ -17,6 +17,9 @@ test:
 	go test -v ./backend
 	rm -rf ./backend/*.dat
 	rm -rf ./backend/*.rec
+	rm -rf ./*.dat
+	rm -rf ./*.rec
+
 
 bench:
 	go test -bench=. ./backend

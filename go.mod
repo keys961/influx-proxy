@@ -1,6 +1,6 @@
 module influx_proxy
 
-go 1.11
+go 1.14
 
 require (
 	github.com/influxdata/influxdb v1.8.2

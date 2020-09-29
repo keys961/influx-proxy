@@ -77,9 +77,8 @@ func BenchmarkScanKey(b *testing.B) {
 }
 
 func CreateTestInfluxCluster() (ic *InfluxCluster, err error) {
-	redisConfig := &RedisConfigSource{}
-	nodeConfig := &ProxyConfig{}
-	ic = NewInfluxCluster(redisConfig, nodeConfig)
+	config := &Config{}
+	ic = NewInfluxCluster(config)
 	backends := make(map[string]BackendApi)
 	bkcfgs := make(map[string]*BackendConfig)
 	cfg, _ := CreateTestBackendConfig("test1")
