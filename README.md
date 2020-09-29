@@ -24,8 +24,6 @@ Therefore, we made InfluxDB Proxy.
 ## Requirements
 
 * Golang >= 1.14
-* Redis-server
-* Python >= 2.7
 
 ## Usage
 
