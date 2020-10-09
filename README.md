@@ -40,7 +40,7 @@ $ ./bin/influxdb-proxy [--config=./config.json]
 
 ## Configuration
 
-Example configuration file is at [proxy.json](proxy.json). 
+Example configuration file is at [config.json](config.json). 
 
 ## Description
 
@@ -83,6 +83,11 @@ It will use the `cpu.load` corresponding backends.
 
 * I removed prefix-match because it will make administrator confused. (For instance, we use `cpu.load` for measurement's name. The KEYMAPS  only has `cpu` key.
 It will use the `cpu` corresponding backends.)
+
+Deployment:
+
+It is recommended to deploy at least 2 proxies to provide HA in production environment.
+You can implement load balance on these proxies by F5, Nginx, LVS or HAProxy.
 
 ## Query Commands
 
