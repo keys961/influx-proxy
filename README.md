@@ -40,8 +40,7 @@ $ ./bin/influxdb-proxy [--config=./config.json]
 
 ## Configuration
 
-Example configuration file is at [config.py](config.py). 
-We use `config.py` to generate configurations to Redis.
+Example configuration file is at [proxy.json](proxy.json). 
 
 ## Description
 
