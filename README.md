@@ -87,22 +87,32 @@ It will use the `cpu` corresponding backends.)
 
 ## Query Commands
 
-
 ### Unsupported commands
 
-* `DELETE` 
-* `DROP`  
-* `GRANT`
-* `REVOKE`
-* `SHOW.*MEASUREMENTS`
-* Cross measurements queries
+- `DROP`  
+- `GRANT`
+- `REVOKE`
+- `ALTER`
+- `CREATE`
+- `SHOW` commands without the specified measurement:
+   - `SHOW DATABASE`
+   - `SHOW RETENTION POLICIES`
+   - `SHOW MEASUREMENTS`
+   - ...
+- `SELECT INTO`
+- Cross measurements queries
+- Nested queries
+- Batch queries with delimiter `;`
 
 ### Supported commands
 
-Only support match the following commands.
-
-* Most of `SELECT` clauses (only 1 measurement)
-* Most of `SHOW.*FROM` clauses (only 1 measurement)
+- Simple `SELECT FROM` with only 1 measurement
+- `SHOW` commands with 1 specified measurement:
+    - `SHOW SERIES FROM`
+    - `SHOW TAG KEYS FROM`
+    - `SHOW TAG VALUES FROM`
+    - `SHOW FIELD KEYS FROM`
+- `DELETE FROM` with only 1 measurement
 
 ## Improvements from the Original Proxy
 

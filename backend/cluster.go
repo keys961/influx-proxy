@@ -85,15 +85,14 @@ type ClusterMetadata struct {
 
 func NewInfluxCluster(config *Config) (ic *InfluxCluster) {
 	ic = &InfluxCluster{
-		config:        config,
-		zone:          config.Proxy.Zone,
-		queryExecutor: &InfluxQLExecutor{},
-		stats:         &Statistics{},
-		counter:       &Statistics{},
-		ticker:        time.NewTicker(10 * time.Second),
-		tags:          map[string]string{"addr": config.Proxy.ListenAddr},
-		WriteTracing:  config.Proxy.WriteTracing,
-		QueryTracing:  config.Proxy.QueryTracing,
+		config:       config,
+		zone:         config.Proxy.Zone,
+		stats:        &Statistics{},
+		counter:      &Statistics{},
+		ticker:       time.NewTicker(10 * time.Second),
+		tags:         map[string]string{"addr": config.Proxy.ListenAddr},
+		WriteTracing: config.Proxy.WriteTracing,
+		QueryTracing: config.Proxy.QueryTracing,
 	}
 	host, err := os.Hostname()
 	if err != nil {
@@ -312,21 +311,9 @@ func (ic *InfluxCluster) GetBackends(key string) (backends []BackendApi, ok bool
 	defer ic.lock.RUnlock()
 
 	backends, ok = ic.measurementToBackends[key]
-	// match use prefix
-	if !ok {
-		for k, v := range ic.measurementToBackends {
-			if strings.HasPrefix(key, k) {
-				backends = v
-				ok = true
-				break
-			}
-		}
-	}
-
 	if !ok {
 		backends, ok = ic.measurementToBackends["_default_"]
 	}
-
 	return
 }
 
@@ -345,17 +332,12 @@ func (ic *InfluxCluster) Query(w http.ResponseWriter, req *http.Request) (err er
 		return
 	}
 
-	// TODO: all query in q?
 	q := strings.TrimSpace(req.FormValue("q"))
+	// empty query
 	if q == "" {
 		w.WriteHeader(400)
 		_, _ = w.Write([]byte("empty query"))
 		atomic.AddInt64(&ic.stats.QueryRequestsFail, 1)
-		return
-	}
-
-	err = ic.queryExecutor.Query(w, req)
-	if err == nil {
 		return
 	}
 
@@ -367,27 +349,27 @@ func (ic *InfluxCluster) Query(w http.ResponseWriter, req *http.Request) (err er
 		return
 	}
 
-	key, err := GetMeasurementFromInfluxQL(q)
+	measurements, err := GetMeasurementsFromInfluxQL(q)
 	if err != nil {
 		log.Printf("can't get measurement: %s\n", q)
 		w.WriteHeader(400)
-		w.Write([]byte("can't get measurement"))
+		_, _ = w.Write([]byte("can't get measurement or influxql is invalid"))
 		atomic.AddInt64(&ic.stats.QueryRequestsFail, 1)
 		return
 	}
-	if len(key) > 1 {
+	if len(measurements) > 1 {
 		log.Printf("don't support multiple measurements: %s\n", q)
 		w.WriteHeader(400)
-		w.Write([]byte("don't support multiple measurements"))
+		_, _ = w.Write([]byte("don't support multiple measurements"))
 		atomic.AddInt64(&ic.stats.QueryRequestsFail, 1)
 		return
 	}
 
-	apis, ok := ic.GetBackends(key[0])
+	apis, ok := ic.GetBackends(measurements[0])
 	if !ok {
-		log.Printf("unknown measurement: %s,the query is %s\n", key, q)
+		log.Printf("unknown measurement: %s,the query is %s\n", measurements, q)
 		w.WriteHeader(400)
-		w.Write([]byte("unknown measurement"))
+		_, _ = w.Write([]byte("unknown measurement"))
 		atomic.AddInt64(&ic.stats.QueryRequestsFail, 1)
 		return
 	}

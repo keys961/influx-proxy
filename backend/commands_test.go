@@ -24,13 +24,17 @@ var (
 		"SHOW FIELD KEYS FROM \"1h\".\"cpu\"",
 		"SHOW FIELD KEYS FROM \"cpu.load\"",
 		"SHOW FIELD KEYS FROM \"1h\".\"cpu.load\"",
+		"DELETE FROM \"cpu\"",
+		"DELETE FROM \"cpu\" WHERE time < '2000-01-01T00:00:00Z'",
 	}
 	UnsupportedCommandList = []string{
 		"REVOKE ALL PRIVILEGES FROM \"jdoe\"",
 		"REVOKE READ ON \"mydb\" FROM \"jdoe\"",
-		"DELETE FROM \"cpu\"",
-		"DELETE FROM \"cpu\" WHERE time < '2000-01-01T00:00:00Z'",
 		"DROP SERIES FROM \"telegraf\".\"autogen\".\"cpu\" WHERE cpu = 'cpu8'",
+		"SELECT * FROM cpu INTO memory",
+		"SELECT * FROM cpu INTO memory;SELECT * FROM cpu INTO memory",
+		";SELECT * FROM cpu INTO memory",
+		";SELECT * FROM cpu INTO memory;",
 	}
 )
 

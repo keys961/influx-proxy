@@ -5,7 +5,6 @@
 package backend
 
 var (
-	ForbidCommands   = "(?i:^\\s*delete|^\\s*drop|^\\s*grant|^\\s*revoke|^\\s*alter|^\\s*create)"
-	SupportCommands  = "(?i:where.*time|show.*from|^\\s*select)"
-	ExecutorCommands = "(?i:show.*measurements)"
+	ForbidCommands  = "(?i:^\\s*grant|^\\s*revoke|^\\s*alter|^\\s*create|^\\s*drop|^\\s*select.*into|.*?;.+)"
+	SupportCommands = "(?i:^\\s*show.*from|^\\s*select.*from|^\\s*delete.*from)"
 )

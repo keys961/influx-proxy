@@ -83,7 +83,7 @@ func TestInfluxQL(t *testing.T) {
 
 func check(t *testing.T, q string, m string) {
 	fmt.Printf(q + "\n")
-	qm, err := GetMeasurementFromInfluxQL(q)
+	qm, err := GetMeasurementsFromInfluxQL(q)
 	if err != nil {
 		t.Errorf("error: %s", err)
 		return
@@ -97,7 +97,7 @@ func check(t *testing.T, q string, m string) {
 func BenchmarkInfluxQL(b *testing.B) {
 	q := "SELECT mean(\"value\") FROM \"cpu\" WHERE \"region\" = 'uswest' GROUP BY time(10m) fill(0)"
 	for i := 0; i < b.N; i++ {
-		qm, err := GetMeasurementFromInfluxQL(q)
+		qm, err := GetMeasurementsFromInfluxQL(q)
 		if err != nil {
 			b.Errorf("error: %s", err)
 			return
